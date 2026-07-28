@@ -94,6 +94,26 @@
 
         <div id="dashboardContent" class="hidden fade-in space-y-8">
             
+            <!-- Filter Tanggal UI -->
+            <div class="glass-card p-5 flex flex-col sm:flex-row gap-4 items-end relative z-20">
+                <div class="flex-1 w-full">
+                    <label class="text-xs text-blue-200 mb-1.5 block font-medium">Dari Tanggal</label>
+                    <input type="date" id="startDate" class="w-full bg-slate-800/50 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
+                </div>
+                <div class="flex-1 w-full">
+                    <label class="text-xs text-blue-200 mb-1.5 block font-medium">Sampai Tanggal</label>
+                    <input type="date" id="endDate" class="w-full bg-slate-800/50 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
+                </div>
+                <div class="flex gap-3 w-full sm:w-auto">
+                    <button onclick="applyFilter()" class="flex-1 sm:flex-none px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 text-sm font-semibold flex items-center justify-center gap-2">
+                        <i data-lucide="filter" class="w-4 h-4"></i> Filter
+                    </button>
+                    <button onclick="resetFilter()" class="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl transition-all text-sm font-semibold flex items-center justify-center gap-2">
+                        <i data-lucide="x" class="w-4 h-4"></i> Reset
+                    </button>
+                </div>
+            </div>
+
             <!-- Highlight Cards Layout (Diperbarui untuk banyak cabang) -->
             <div class="flex flex-col gap-6">
                 <!-- Total Card (Full Width) -->
@@ -188,6 +208,7 @@
         // =======================================================
 
         let appData = null;
+        let currentData = null; // Menyimpan data hasil filter
         let chartPie = null;
         let chartBar = null;
 
@@ -198,6 +219,20 @@
             if(!tglString) return '-';
             const date = new Date(tglString);
             return isNaN(date) ? tglString : date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        };
+
+        // Fungsi khusus membaca tanggal format Excel (contoh: "13-Jul") agar terbaca tepat di grafik & filter
+        const parseExcelDate = (dateStr) => {
+            if (!dateStr) return 0;
+            let d = new Date(dateStr);
+            // Jika browser mem-parsing tanpa tahun, seringkali otomatis ke tahun 2001. Kita paksa ke tahun ini.
+            if (!isNaN(d.getTime()) && d.getFullYear() === 2001) {
+                d = new Date(dateStr + " " + new Date().getFullYear());
+            }
+            if (isNaN(d.getTime())) {
+                d = new Date(dateStr + " " + new Date().getFullYear());
+            }
+            return isNaN(d.getTime()) ? 0 : d.getTime();
         };
 
         async function fetchData() {
@@ -212,6 +247,7 @@
             try {
                 const response = await fetch(SCRIPT_URL);
                 appData = await response.json();
+                currentData = appData; // Saat awal, tampilkan semua data tanpa filter
                 
                 renderDashboard();
                 
@@ -233,8 +269,8 @@
         }
 
         function renderDashboard() {
-            // 1. Update Total Semua
-            document.getElementById('totalSemua').innerText = formatRupiah(appData.totalSemua);
+            // 1. Update Total Semua menggunakan currentData
+            document.getElementById('totalSemua').innerText = formatRupiah(currentData.totalSemua);
 
             // 2. Render Dapur Summary Cards
             const summaryContainer = document.getElementById('dapurSummaryCards');
@@ -250,8 +286,8 @@
                 'from-amber-500/20 to-yellow-500/5 border-amber-500/20 text-amber-400'
             ];
 
-            appData.summary.labels.forEach((label, index) => {
-                const total = appData.summary.totals[index];
+            currentData.summary.labels.forEach((label, index) => {
+                const total = currentData.summary.totals[index];
                 const colorClass = gradients[index % gradients.length];
                 const parts = colorClass.split(' ');
                 
@@ -277,14 +313,18 @@
 
             // 4. Setup Filter & Render Table
             const filterSelect = document.getElementById('dapurFilter');
-            filterSelect.innerHTML = ''; // Reset options
-            appData.summary.labels.forEach(label => {
-                const option = document.createElement('option');
-                option.value = label;
-                option.text = label;
-                option.className = "bg-slate-800 text-white"; // Style dropdown options
-                filterSelect.appendChild(option);
-            });
+            
+            // Hanya isi opsi dropdown jika kosong (mencegah reset saat filter tanggal)
+            if (filterSelect.options.length === 0) {
+                currentData.summary.labels.forEach(label => {
+                    const option = document.createElement('option');
+                    option.value = label;
+                    option.text = label;
+                    option.className = "bg-slate-800 text-white"; // Style dropdown options
+                    filterSelect.appendChild(option);
+                });
+            }
+            
             renderTable();
             lucide.createIcons();
         }
@@ -309,9 +349,9 @@
             chartPie = new Chart(ctxPie, {
                 type: 'doughnut',
                 data: {
-                    labels: appData.summary.labels,
+                    labels: currentData.summary.labels,
                     datasets: [{
-                        data: appData.summary.totals,
+                        data: currentData.summary.totals,
                         backgroundColor: bgColors,
                         borderColor: 'rgba(15, 23, 42, 0.8)',
                         borderWidth: 2,
@@ -339,10 +379,10 @@
             chartBar = new Chart(ctxBar, {
                 type: 'bar',
                 data: {
-                    labels: appData.summary.labels,
+                    labels: currentData.summary.labels,
                     datasets: [{
                         label: 'Total Pengeluaran',
-                        data: appData.summary.totals,
+                        data: currentData.summary.totals,
                         backgroundColor: bgColors,
                         borderColor: borderColors,
                         borderWidth: 1,
@@ -377,7 +417,7 @@
             const selectedDapur = document.getElementById('dapurFilter').value;
             const tbody = document.getElementById('tableBody');
             
-            const dataDapur = appData.details[selectedDapur] || [];
+            const dataDapur = currentData.details[selectedDapur] || [];
             
             tbody.innerHTML = '';
             
@@ -397,6 +437,58 @@
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        // --- SISTEM FILTER TANGGAL REAL-TIME ---
+        function applyFilter() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!startDate && !endDate) return;
+
+            // Atur waktu agar presisi (mulai dari 00:00:00 s/d 23:59:59)
+            const startStr = startDate ? new Date(startDate).setHours(0,0,0,0) : 0;
+            const endStr = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
+
+            let filtered = {
+                totalSemua: 0,
+                summary: { labels: [], totals: [] },
+                details: {}
+            };
+
+            // Loop untuk memfilter data per dapur
+            appData.summary.labels.forEach((dapur) => {
+                filtered.summary.labels.push(dapur);
+                let totalPerDapur = 0;
+                let recordsFiltered = [];
+
+                appData.details[dapur].forEach(row => {
+                    let rowTime = parseExcelDate(row.tanggal);
+
+                    // Jika tanggal data berada di antara tanggal pilihan
+                    if (rowTime >= startStr && rowTime <= endStr) {
+                        recordsFiltered.push(row);
+                        totalPerDapur += row.harga;
+                    }
+                });
+
+                filtered.details[dapur] = recordsFiltered;
+                filtered.summary.totals.push(totalPerDapur);
+                filtered.totalSemua += totalPerDapur;
+            });
+
+            currentData = filtered; // Timpa tampilan sementara dengan data yang sudah difilter
+            renderDashboard(); // Render ulang grafik dan tabel secara instan
+        }
+
+        function resetFilter() {
+            // Kosongkan form input
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            
+            // Kembalikan ke data asli dari database
+            currentData = appData;
+            renderDashboard();
         }
 
         // Jalankan fetch saat halaman dimuat
