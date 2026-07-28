@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Rekap Dapur</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Outfit', sans-serif; 
+            /* Animated gradient background */
+            background: linear-gradient(-45deg, #0f172a, #1e1b4b, #312e81, #0f172a);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Glassmorphism Classes */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            border-radius: 1.25rem;
+        }
+
+        .glass-header {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Custom Scrollbar for table */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top: 3px solid #60a5fa;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="antialiased pb-12">
+
+    <nav class="glass-header sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-20 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-xl shadow-lg">
+                        <i data-lucide="chef-hat" class="text-white w-7 h-7"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-white tracking-wide">Rekap Dapur Pro</h1>
+                        <p class="text-xs text-blue-200 font-medium">Dashboard Analitik Keuangan</p>
+                    </div>
+                </div>
+                <button onclick="fetchData()" class="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full transition-all duration-300 text-sm font-semibold">
+                    <i data-lucide="refresh-cw" id="refreshIcon" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Refresh Data</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+        
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="flex flex-col items-center justify-center py-20 fade-in">
+            <div class="loader mb-4 w-12 h-12"></div>
+            <p class="text-blue-200 font-medium animate-pulse">Sinkronisasi data dengan Google Sheets...</p>
+        </div>
+
+        <div id="dashboardContent" class="hidden fade-in space-y-8">
+            
+            <!-- Highlight Cards Layout (Diperbarui untuk banyak cabang) -->
+            <div class="flex flex-col gap-6">
+                <!-- Total Card (Full Width) -->
+                <div class="glass-card p-8 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500 to-purple-600 opacity-20 rounded-full blur-3xl group-hover:opacity-40 transition-opacity duration-700"></div>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center relative z-10">
+                        <div>
+                            <p class="text-sm font-medium text-blue-200 mb-2 tracking-wide uppercase">Total Pengeluaran Keseluruhan</p>
+                            <h2 id="totalSemua" class="text-5xl font-bold text-white tracking-tight drop-shadow-lg">Rp 0</h2>
+                        </div>
+                        <div class="mt-4 sm:mt-0 p-4 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-md">
+                            <i data-lucide="wallet" class="w-10 h-10 text-blue-400"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dapur Summary Cards Container (Grid untuk banyak cabang) -->
+                <div>
+                    <h3 class="text-sm font-medium text-slate-400 mb-4 ml-1">Rincian per Cabang Dapur</h3>
+                    <div id="dapurSummaryCards" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Pie Chart -->
+                <div class="glass-card p-6 flex flex-col">
+                    <h3 class="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-5 h-5 text-purple-400"></i>
+                        Persentase Pengeluaran
+                    </h3>
+                    <div class="relative flex-grow min-h-[300px] flex items-center justify-center">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Bar Chart -->
+                <div class="glass-card p-6 flex flex-col">
+                    <h3 class="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-5 h-5 text-blue-400"></i>
+                        Perbandingan Cabang
+                    </h3>
+                    <div class="relative flex-grow min-h-[300px] flex items-center justify-center">
+                        <canvas id="barChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card overflow-hidden flex flex-col">
+                <div class="p-6 border-b border-white/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                        <i data-lucide="list" class="w-5 h-5 text-emerald-400"></i>
+                        Rincian Transaksi
+                    </h3>
+                    
+                    <!-- Dapur Filter -->
+                    <div class="relative">
+                        <select id="dapurFilter" onchange="renderTable()" class="appearance-none bg-white/5 border border-white/10 text-white text-sm rounded-lg pl-4 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                            <!-- Options injected via JS -->
+                        </select>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-white/5 text-slate-300 text-sm tracking-wide">
+                                <th class="p-4 font-medium w-16 text-center">No</th>
+                                <th class="p-4 font-medium w-1/4">Tanggal</th>
+                                <th class="p-4 font-medium w-2/4">Keterangan</th>
+                                <th class="p-4 font-medium w-1/4 text-right">Nominal (Rp)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-white/5 text-slate-300 text-sm">
+                            <!-- Data rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // INISIALISASI ICON
+        lucide.createIcons();
+
+        // =============== GANTI URL DI BAWAH INI ===============
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx_VqtisLKGYPvpW0YX9QUKZL-zRv8NdavCnzM6LCkpZtrg_1BxRUYxDCqzWnqrjs6txA/exec'; 
+        // =======================================================
+
+        let appData = null;
+        let chartPie = null;
+        let chartBar = null;
+
+        const formatRupiah = (angka) => {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+        };
+        const formatTanggal = (tglString) => {
+            if(!tglString) return '-';
+            const date = new Date(tglString);
+            return isNaN(date) ? tglString : date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        };
+
+        async function fetchData() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const dashboardContent = document.getElementById('dashboardContent');
+            const refreshIcon = document.getElementById('refreshIcon');
+            
+            loadingOverlay.classList.remove('hidden');
+            dashboardContent.classList.add('hidden');
+            refreshIcon.classList.add('animate-spin');
+
+            try {
+                const response = await fetch(SCRIPT_URL);
+                appData = await response.json();
+                
+                renderDashboard();
+                
+                loadingOverlay.classList.add('hidden');
+                dashboardContent.classList.remove('hidden');
+            } catch (error) {
+                console.error("Gagal mengambil data:", error);
+                loadingOverlay.innerHTML = `
+                    <div class="text-red-400 flex flex-col items-center">
+                        <i data-lucide="alert-triangle" class="w-12 h-12 mb-2"></i>
+                        <p class="font-medium">Gagal memuat data dari database.</p>
+                        <p class="text-sm opacity-80 mt-1 text-center">Pastikan URL Apps Script benar dan memiliki izin akses "Siapa saja".</p>
+                        <button onclick="fetchData()" class="mt-4 px-4 py-2 bg-red-500/20 text-red-300 border border-red-500/50 rounded-lg hover:bg-red-500/30 transition">Coba Lagi</button>
+                    </div>`;
+                lucide.createIcons();
+            } finally {
+                refreshIcon.classList.remove('animate-spin');
+            }
+        }
+
+        function renderDashboard() {
+            // 1. Update Total Semua
+            document.getElementById('totalSemua').innerText = formatRupiah(appData.totalSemua);
+
+            // 2. Render Dapur Summary Cards
+            const summaryContainer = document.getElementById('dapurSummaryCards');
+            summaryContainer.innerHTML = '';
+            
+            // Generate distinct gradient colors for cards
+            const gradients = [
+                'from-emerald-500/20 to-teal-500/5 border-emerald-500/20 text-emerald-400',
+                'from-orange-500/20 to-rose-500/5 border-orange-500/20 text-orange-400',
+                'from-purple-500/20 to-fuchsia-500/5 border-purple-500/20 text-purple-400',
+                'from-cyan-500/20 to-blue-500/5 border-cyan-500/20 text-cyan-400',
+                'from-pink-500/20 to-rose-500/5 border-pink-500/20 text-pink-400',
+                'from-amber-500/20 to-yellow-500/5 border-amber-500/20 text-amber-400'
+            ];
+
+            appData.summary.labels.forEach((label, index) => {
+                const total = appData.summary.totals[index];
+                const colorClass = gradients[index % gradients.length];
+                const parts = colorClass.split(' ');
+                
+                const card = document.createElement('div');
+                card.className = `glass-card p-4 relative overflow-hidden group border hover:bg-white/5 transition-colors cursor-default ${parts[2]}`;
+                card.innerHTML = `
+                    <div class="absolute inset-0 bg-gradient-to-br ${parts[0]} ${parts[1]} opacity-30"></div>
+                    <div class="relative z-10 flex flex-col h-full gap-2">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i data-lucide="store" class="w-4 h-4 ${parts[3]}"></i>
+                            <h3 class="text-slate-300 text-xs sm:text-sm font-medium truncate" title="${label}">${label}</h3>
+                        </div>
+                        <div>
+                            <p class="text-lg sm:text-xl font-bold text-white break-words">${formatRupiah(total)}</p>
+                        </div>
+                    </div>
+                `;
+                summaryContainer.appendChild(card);
+            });
+
+            // 3. Render Charts
+            renderCharts();
+
+            // 4. Setup Filter & Render Table
+            const filterSelect = document.getElementById('dapurFilter');
+            filterSelect.innerHTML = ''; // Reset options
+            appData.summary.labels.forEach(label => {
+                const option = document.createElement('option');
+                option.value = label;
+                option.text = label;
+                option.className = "bg-slate-800 text-white"; // Style dropdown options
+                filterSelect.appendChild(option);
+            });
+            renderTable();
+            lucide.createIcons();
+        }
+
+        function renderCharts() {
+            // Common Options for Dark Theme
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.font.family = 'Outfit';
+
+            const bgColors = [
+                'rgba(56, 189, 248, 0.8)', // Sky
+                'rgba(52, 211, 153, 0.8)', // Emerald
+                'rgba(167, 139, 250, 0.8)', // Purple
+                'rgba(251, 146, 60, 0.8)',  // Orange
+                'rgba(244, 114, 182, 0.8)'  // Pink
+            ];
+            const borderColors = bgColors.map(color => color.replace('0.8', '1'));
+
+            // PIE CHART
+            const ctxPie = document.getElementById('pieChart').getContext('2d');
+            if(chartPie) chartPie.destroy();
+            chartPie = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: appData.summary.labels,
+                    datasets: [{
+                        data: appData.summary.totals,
+                        backgroundColor: bgColors,
+                        borderColor: 'rgba(15, 23, 42, 0.8)',
+                        borderWidth: 2,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) { return ' ' + formatRupiah(context.raw); }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // BAR CHART
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+            if(chartBar) chartBar.destroy();
+            chartBar = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: appData.summary.labels,
+                    datasets: [{
+                        label: 'Total Pengeluaran',
+                        data: appData.summary.totals,
+                        backgroundColor: bgColors,
+                        borderColor: borderColors,
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                            ticks: { callback: function(value) { return 'Rp ' + (value/1000) + 'k'; } }
+                        },
+                        x: { grid: { display: false, drawBorder: false } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) { return formatRupiah(context.raw); }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTable() {
+            const selectedDapur = document.getElementById('dapurFilter').value;
+            const tbody = document.getElementById('tableBody');
+            
+            const dataDapur = appData.details[selectedDapur] || [];
+            
+            tbody.innerHTML = '';
+            
+            if(dataDapur.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 italic">Belum ada catatan pengeluaran.</td></tr>`;
+                return;
+            }
+
+            dataDapur.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-white/5 transition-colors group';
+                tr.innerHTML = `
+                    <td class="p-4 text-center text-slate-500 group-hover:text-slate-300 transition-colors">${index + 1}</td>
+                    <td class="p-4 whitespace-nowrap text-slate-300 font-medium">${formatTanggal(row.tanggal)}</td>
+                    <td class="p-4 text-slate-400 group-hover:text-white transition-colors">${row.keterangan}</td>
+                    <td class="p-4 whitespace-nowrap text-right font-semibold text-emerald-400">${formatRupiah(row.harga)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Jalankan fetch saat halaman dimuat
+        window.onload = fetchData;
+
+    </script>
+</body>
+</html>
