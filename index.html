@@ -94,23 +94,18 @@
 
         <div id="dashboardContent" class="hidden fade-in space-y-8">
             
-            <!-- Filter Tanggal UI -->
-            <div class="glass-card p-5 flex flex-col sm:flex-row gap-4 items-end relative z-20">
-                <div class="flex-1 w-full">
-                    <label class="text-xs text-blue-200 mb-1.5 block font-medium">Dari Tanggal</label>
-                    <input type="date" id="startDate" class="w-full bg-slate-800/50 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                </div>
-                <div class="flex-1 w-full">
-                    <label class="text-xs text-blue-200 mb-1.5 block font-medium">Sampai Tanggal</label>
-                    <input type="date" id="endDate" class="w-full bg-slate-800/50 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]">
-                </div>
-                <div class="flex gap-3 w-full sm:w-auto">
-                    <button onclick="applyFilter()" class="flex-1 sm:flex-none px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 text-sm font-semibold flex items-center justify-center gap-2">
-                        <i data-lucide="filter" class="w-4 h-4"></i> Filter
+            <!-- Filter Bulan UI (Pengganti Filter Tanggal Lama) -->
+            <div class="glass-card p-5 relative z-20">
+                <div class="flex items-center justify-between mb-4">
+                    <label class="text-sm text-blue-200 font-semibold flex items-center gap-2">
+                        <i data-lucide="calendar" class="w-4 h-4"></i> Rekap Per Bulan
+                    </label>
+                    <button onclick="resetFilter()" class="text-xs bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-lg text-white transition flex items-center gap-2">
+                        <i data-lucide="layout-grid" class="w-3 h-3"></i> Tampilkan Semua
                     </button>
-                    <button onclick="resetFilter()" class="flex-1 sm:flex-none px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl transition-all text-sm font-semibold flex items-center justify-center gap-2">
-                        <i data-lucide="x" class="w-4 h-4"></i> Reset
-                    </button>
+                </div>
+                <!-- Tempat tombol-tombol bulan akan dimunculkan otomatis -->
+                <div id="monthFilterContainer" class="flex flex-wrap gap-2">
                 </div>
             </div>
 
@@ -211,6 +206,7 @@
         let currentData = null; // Menyimpan data hasil filter
         let chartPie = null;
         let chartBar = null;
+        let isFetching = false; // Status untuk mencegah klik ganda pada tombol refresh
 
         const formatRupiah = (angka) => {
             return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
@@ -221,25 +217,33 @@
             return isNaN(date) ? tglString : date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
         };
 
-        // Fungsi khusus membaca tanggal format Excel (contoh: "13-Jul") agar terbaca tepat di grafik & filter
-        const parseExcelDate = (dateStr) => {
-            if (!dateStr) return 0;
-            let d = new Date(dateStr);
-            // Jika browser mem-parsing tanpa tahun, seringkali otomatis ke tahun 2001. Kita paksa ke tahun ini.
-            if (!isNaN(d.getTime()) && d.getFullYear() === 2001) {
-                d = new Date(dateStr + " " + new Date().getFullYear());
-            }
-            if (isNaN(d.getTime())) {
-                d = new Date(dateStr + " " + new Date().getFullYear());
-            }
-            return isNaN(d.getTime()) ? 0 : d.getTime();
+        // Helper untuk mendapatkan format string YYYY-MM (Tahun-Bulan)
+        const getYearMonth = (tglString) => {
+            if(!tglString) return '';
+            const date = new Date(tglString);
+            if(isNaN(date)) return '';
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        };
+
+        // Helper untuk merubah kode bulan menjadi tulisan cantik (contoh: "Agustus 2026")
+        const formatMonthLabel = (yyyy_mm) => {
+            const [y, m] = yyyy_mm.split('-');
+            const date = new Date(y, m - 1, 1);
+            return date.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
         };
 
         async function fetchData() {
+            // Cegah fetch berulang jika tombol diklik berkali-kali saat sedang loading
+            if (isFetching) return; 
+            isFetching = true;
+
             const loadingOverlay = document.getElementById('loadingOverlay');
             const dashboardContent = document.getElementById('dashboardContent');
             const refreshIcon = document.getElementById('refreshIcon');
+            const refreshBtn = refreshIcon.closest('button');
             
+            // Ubah tampilan tombol jadi redup saat proses refresh berjalan
+            refreshBtn.classList.add('opacity-50', 'cursor-not-allowed');
             loadingOverlay.classList.remove('hidden');
             dashboardContent.classList.add('hidden');
             refreshIcon.classList.add('animate-spin');
@@ -247,9 +251,14 @@
             try {
                 const response = await fetch(SCRIPT_URL);
                 appData = await response.json();
-                currentData = appData; // Saat awal, tampilkan semua data tanpa filter
                 
-                renderDashboard();
+                // Siapkan tombol filter bulan berdasarkan ketersediaan data
+                setupMonthFilters();
+                
+                // DEFAULT SAAT DIMUAT: Langsung saring ke "Bulan Saat Ini"
+                const now = new Date();
+                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                applyMonthFilter(currentMonthKey);
                 
                 loadingOverlay.classList.add('hidden');
                 dashboardContent.classList.remove('hidden');
@@ -264,7 +273,10 @@
                     </div>`;
                 lucide.createIcons();
             } finally {
+                // Kembalikan tombol seperti semula setelah selesai (sukses/gagal)
                 refreshIcon.classList.remove('animate-spin');
+                refreshBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                isFetching = false;
             }
         }
 
@@ -422,7 +434,7 @@
             tbody.innerHTML = '';
             
             if(dataDapur.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 italic">Belum ada catatan pengeluaran.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-slate-400 italic">Belum ada catatan pengeluaran di periode ini.</td></tr>`;
                 return;
             }
 
@@ -439,34 +451,73 @@
             });
         }
 
-        // --- SISTEM FILTER TANGGAL REAL-TIME ---
-        function applyFilter() {
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
+        // --- SISTEM FILTER BULAN OTOMATIS (BARU) ---
+        function setupMonthFilters() {
+            const container = document.getElementById('monthFilterContainer');
+            container.innerHTML = '';
+            
+            const uniqueMonths = new Set();
+            
+            // 1. Pastikan bulan berjalan (bulan ini) SELALU ada tombolnya 
+            // Meskipun mungkin datanya belum di-input di Excel
+            const now = new Date();
+            const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            uniqueMonths.add(currentMonthKey);
 
-            if (!startDate && !endDate) return;
+            // 2. Kumpulkan bulan-bulan lain yang ada dari data Google Sheets
+            appData.summary.labels.forEach(dapur => {
+                appData.details[dapur].forEach(row => {
+                    const ym = getYearMonth(row.tanggal);
+                    if(ym) uniqueMonths.add(ym);
+                });
+            });
 
-            // Atur waktu agar presisi (mulai dari 00:00:00 s/d 23:59:59)
-            const startStr = startDate ? new Date(startDate).setHours(0,0,0,0) : 0;
-            const endStr = endDate ? new Date(endDate).setHours(23,59,59,999) : Infinity;
+            // 3. Urutkan tombol bulan dari yang paling baru ke paling lama
+            const sortedMonths = Array.from(uniqueMonths).sort().reverse();
 
+            // 4. Render (buat) tombol-tombolnya ke layar HTML
+            sortedMonths.forEach(ym => {
+                const btn = document.createElement('button');
+                btn.id = `btn-month-${ym}`;
+                
+                // Beri label khusus penanda kalau itu adalah bulan ini
+                btn.innerText = ym === currentMonthKey ? `Bulan Ini (${formatMonthLabel(ym)})` : formatMonthLabel(ym);
+                btn.className = `month-btn px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 border border-white/10 text-slate-300 bg-white/5 hover:bg-white/20`;
+                btn.onclick = () => applyMonthFilter(ym);
+                
+                container.appendChild(btn);
+            });
+        }
+
+        function applyMonthFilter(ymKey) {
+            // Update styling warna tombol agar pengguna tahu bulan mana yang aktif diklik
+            document.querySelectorAll('.month-btn').forEach(btn => {
+                if(btn.id === `btn-month-${ymKey}`) {
+                    // Gaya tombol ketika aktif (Biru terang)
+                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-500', 'shadow-lg', 'shadow-blue-500/30');
+                    btn.classList.remove('bg-white/5', 'text-slate-300', 'border-white/10');
+                } else {
+                    // Gaya tombol pasif / mati
+                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-500', 'shadow-lg', 'shadow-blue-500/30');
+                    btn.classList.add('bg-white/5', 'text-slate-300', 'border-white/10');
+                }
+            });
+
+            // Menyiapkan wadah data kosong untuk hasil penyaringan (filter)
             let filtered = {
                 totalSemua: 0,
                 summary: { labels: [], totals: [] },
                 details: {}
             };
 
-            // Loop untuk memfilter data per dapur
+            // Proses saring/filter data per dapur sesuai bulan yang diklik
             appData.summary.labels.forEach((dapur) => {
                 filtered.summary.labels.push(dapur);
                 let totalPerDapur = 0;
                 let recordsFiltered = [];
 
                 appData.details[dapur].forEach(row => {
-                    let rowTime = parseExcelDate(row.tanggal);
-
-                    // Jika tanggal data berada di antara tanggal pilihan
-                    if (rowTime >= startStr && rowTime <= endStr) {
+                    if (getYearMonth(row.tanggal) === ymKey) {
                         recordsFiltered.push(row);
                         totalPerDapur += row.harga;
                     }
@@ -477,16 +528,18 @@
                 filtered.totalSemua += totalPerDapur;
             });
 
-            currentData = filtered; // Timpa tampilan sementara dengan data yang sudah difilter
+            currentData = filtered; // Terapkan data yang sudah disaring
             renderDashboard(); // Render ulang grafik dan tabel secara instan
         }
 
         function resetFilter() {
-            // Kosongkan form input
-            document.getElementById('startDate').value = '';
-            document.getElementById('endDate').value = '';
+            // Matikan semua warna aktif dari tombol bulan
+            document.querySelectorAll('.month-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-500', 'shadow-lg', 'shadow-blue-500/30');
+                btn.classList.add('bg-white/5', 'text-slate-300', 'border-white/10');
+            });
             
-            // Kembalikan ke data asli dari database
+            // Kembalikan ke seluruh data awal tanpa batasan bulan
             currentData = appData;
             renderDashboard();
         }
